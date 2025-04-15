@@ -84,7 +84,10 @@ class DiverseBeamSearchScorer(BeamSearchScorer):
                         
                         # Apply diversity penalty to scores
                         for prev_token in prev_tokens:
-                            group_scores[prev_token] -= self.diversity_penalty
+                            # Find the index of the token in next_tokens
+                            token_mask = next_tokens[batch_idx] == prev_token
+                            if token_mask.any():
+                                group_scores[token_mask] -= self.diversity_penalty
                 
                 # Select top tokens for this group
                 group_scores, group_indices = torch.topk(group_scores, self.group_size)

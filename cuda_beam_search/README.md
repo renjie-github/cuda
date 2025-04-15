@@ -1,35 +1,6 @@
-# CUDA Beam Search Implementation
+# CUDA Beam Search
 
-This project implements CUDA-accelerated beam search algorithms, including both standard beam search and diverse beam search, based on the implementation from the Hugging Face Transformers library. The implementation is designed to be efficient and scalable for large language models.
-
-## Project Structure
-
-```
-cuda_beam_search/
-├── src/
-│   ├── beam_search.py           # Standard beam search implementation
-│   ├── cuda_beam_search.cu      # CUDA implementation for standard beam search
-│   ├── diverse/
-│   │   ├── beam_search.py       # Diverse beam search implementation
-│   │   ├── cuda_beam_search.cu  # CUDA implementation for diverse beam search
-│   │   └── __init__.py          # Diverse beam search module exports
-│   └── __init__.py              # Main module exports
-├── tests/
-│   ├── test_beam_search.py      # Tests for standard beam search
-│   └── diverse/
-│       └── test_beam_search.py  # Tests for diverse beam search
-└── docs/
-    ├── implementation.md        # Implementation details for standard beam search
-    └── diverse/
-        └── implementation.md    # Implementation details for diverse beam search
-```
-
-## Prerequisites
-
-- CUDA Toolkit (version 11.0 or higher)
-- Python 3.8 or higher
-- PyTorch with CUDA support
-- NVIDIA GPU with compute capability 6.0 or higher
+A CUDA-accelerated implementation of beam search and diverse beam search for language models.
 
 ## Installation
 
@@ -39,33 +10,9 @@ git clone https://github.com/yourusername/cuda_beam_search.git
 cd cuda_beam_search
 ```
 
-2. Create a virtual environment and activate it:
+2. Install the package:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install the required packages:
-```bash
-pip install -r requirements.txt
-```
-
-4. Build the CUDA extensions:
-```bash
-python setup.py build_ext --inplace
-python setup_diverse.py build_ext --inplace
-```
-
-## Running the Tests
-
-To verify both implementations, run the test suites:
-
-```bash
-# Test standard beam search
-pytest tests/
-
-# Test diverse beam search
-pytest tests/diverse/
+pip install -e .
 ```
 
 ## Usage
@@ -74,77 +21,133 @@ pytest tests/diverse/
 
 ```python
 from cuda_beam_search import CUDABeamSearchScorer
+import torch
 
-# Initialize the beam search scorer
+# Initialize the scorer
 scorer = CUDABeamSearchScorer(
-    batch_size=2,
-    num_beams=3,
+    batch_size=1,
+    num_beams=5,
     device=torch.device("cuda"),
     length_penalty=1.0,
     do_early_stopping=False,
     num_beam_hyps_to_keep=1
 )
 
-# Process one step of beam search
+# Use in your generation loop
 next_beam_scores, next_beam_tokens, next_beam_indices = scorer.process(
     input_ids=input_ids,
     next_scores=next_scores,
     next_tokens=next_tokens,
     next_indices=next_indices,
-    pad_token_id=0,
-    eos_token_id=1
+    pad_token_id=tokenizer.pad_token_id,
+    eos_token_id=tokenizer.eos_token_id
 )
 ```
 
 ### Diverse Beam Search
 
 ```python
-from cuda_beam_search.diverse import CUDADiverseBeamSearchScorer
+from cuda_beam_search import CUDADiverseBeamSearchScorer
+import torch
 
-# Initialize the diverse beam search scorer
+# Initialize the scorer
 scorer = CUDADiverseBeamSearchScorer(
-    batch_size=2,
+    batch_size=1,
     num_beams=6,  # Must be divisible by num_beam_groups
     num_beam_groups=2,
     device=torch.device("cuda"),
     length_penalty=1.0,
     do_early_stopping=False,
     num_beam_hyps_to_keep=1,
-    diversity_penalty=0.5  # Controls the strength of diversity
+    diversity_penalty=0.5
 )
 
-# Process one step of diverse beam search
+# Use in your generation loop
 next_beam_scores, next_beam_tokens, next_beam_indices = scorer.process(
     input_ids=input_ids,
     next_scores=next_scores,
     next_tokens=next_tokens,
     next_indices=next_indices,
-    pad_token_id=0,
-    eos_token_id=1
+    pad_token_id=tokenizer.pad_token_id,
+    eos_token_id=tokenizer.eos_token_id
 )
 ```
 
-## Performance Comparison
+## Example with GPT-2
 
-Both CUDA implementations provide significant speedup compared to their CPU counterparts, especially for large batch sizes and number of beams. The exact performance improvement depends on your hardware configuration.
+```python
+import torch
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
+from cuda_beam_search import CUDADiverseBeamSearchScorer
 
-### Key Features
+# Load model and tokenizer
+model = GPT2LMHeadModel.from_pretrained('gpt2').cuda()
+tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
-1. **Standard Beam Search**:
-   - Efficient parallel processing of multiple beams
-   - Memory-optimized data structures
-   - Support for early stopping and length penalties
+# Initialize diverse beam search
+scorer = CUDADiverseBeamSearchScorer(
+    batch_size=1,
+    num_beams=6,
+    num_beam_groups=2,
+    device=torch.device("cuda"),
+    diversity_penalty=0.5
+)
 
-2. **Diverse Beam Search**:
-   - Group-based beam search with diversity penalties
-   - Parallel processing of beam groups
-   - Configurable diversity strength
-   - Efficient memory access patterns
+# Prepare input
+input_text = "The future of artificial intelligence"
+input_ids = tokenizer.encode(input_text, return_tensors='pt').cuda()
 
-## Contributing
+# Generation loop
+for _ in range(50):  # max_length
+    outputs = model(input_ids)
+    next_token_logits = outputs.logits[:, -1, :]
+    
+    # Get top tokens and scores
+    next_token_scores = torch.nn.functional.log_softmax(next_token_logits, dim=-1)
+    next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * scorer.num_beams, dim=1)
+    next_indices = next_tokens // tokenizer.vocab_size
+    
+    # Process with beam search
+    next_beam_scores, next_beam_tokens, next_beam_indices = scorer.process(
+        input_ids=input_ids,
+        next_scores=next_token_scores,
+        next_tokens=next_tokens,
+        next_indices=next_indices,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id
+    )
+    
+    # Update input_ids
+    input_ids = torch.cat([
+        input_ids[next_beam_indices.view(-1), :],
+        next_beam_tokens.view(-1, 1)
+    ], dim=-1)
+    
+    if scorer._done.all():
+        break
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+# Decode the results
+decoded, best_scores = scorer.finalize(
+    input_ids=input_ids,
+    final_beam_scores=next_beam_scores,
+    final_beam_tokens=next_beam_tokens,
+    final_beam_indices=next_beam_indices,
+    pad_token_id=tokenizer.pad_token_id,
+    eos_token_id=tokenizer.eos_token_id
+)
+
+# Print the generated text
+for sequence in decoded:
+    print(tokenizer.decode(sequence, skip_special_tokens=True))
+```
+
+## Requirements
+
+- CUDA-capable GPU
+- PyTorch with CUDA support
+- Python 3.6+
+- NVIDIA CUDA Toolkit
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+MIT License 

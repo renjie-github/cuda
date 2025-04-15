@@ -43,7 +43,13 @@ __global__ void process_diverse_beam_search_kernel(
             for (int prev_beam = 0; prev_beam < group_size; prev_beam++) {
                 const int prev_idx = batch_idx * num_beams + prev_group * group_size + prev_beam;
                 const int64_t prev_token = next_beam_tokens[prev_idx];
-                group_scores[prev_token] -= diversity_penalty;
+                
+                // Find where this token appears in next_tokens
+                for (int i = 0; i < vocab_size; i++) {
+                    if (next_tokens[batch_idx * vocab_size + i] == prev_token) {
+                        group_scores[i] -= diversity_penalty;
+                    }
+                }
             }
         }
     }

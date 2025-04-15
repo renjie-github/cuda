@@ -1,3 +1,4 @@
+from typing import Tuple
 import torch
 from typing import Tuple
 from ..beam_search import BeamSearchScorer
