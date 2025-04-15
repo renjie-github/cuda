@@ -6,6 +6,9 @@ setup(
     ext_modules=[
         CUDAExtension('cuda_beam_search', [
             'src/cuda_beam_search.cu',
+        ]),
+        CUDAExtension('cuda_beam_search.diverse', [
+            'src/diverse/cuda_beam_search.cu',
         ])
     ],
     cmdclass={
