@@ -31,8 +31,11 @@ __global__ void process_diverse_beam_search_kernel(
     const int group_size = num_beams / num_beam_groups;
     if (beam_idx >= group_size) return;
     
-    // Get scores for this group
-    float* group_scores = new float[vocab_size];
+    // Use shared memory for group scores
+    extern __shared__ float shared_scores[];
+    float* group_scores = &shared_scores[threadIdx.x * vocab_size];
+    
+    // Copy scores to shared memory
     for (int i = 0; i < vocab_size; i++) {
         group_scores[i] = next_scores[batch_idx * vocab_size + i];
     }
@@ -72,8 +75,6 @@ __global__ void process_diverse_beam_search_kernel(
     next_beam_scores[out_idx] = best_score;
     next_beam_tokens[out_idx] = best_token;
     next_beam_indices[out_idx] = best_index;
-    
-    delete[] group_scores;
 }
 
 std::vector<torch::Tensor> process_diverse_beam_search_cuda(
@@ -104,8 +105,9 @@ std::vector<torch::Tensor> process_diverse_beam_search_cuda(
     
     const dim3 blocks(batch_size, num_beam_groups);
     const dim3 threads(num_beams / num_beam_groups);
+    const size_t shared_mem_size = threads.x * vocab_size * sizeof(float);
     
-    process_diverse_beam_search_kernel<<<blocks, threads>>>(
+    process_diverse_beam_search_kernel<<<blocks, threads, shared_mem_size>>>(
         input_ids.data_ptr<int64_t>(),
         next_scores.data_ptr<float>(),
         next_tokens.data_ptr<int64_t>(),
