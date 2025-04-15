@@ -13,6 +13,7 @@ A CUDA-accelerated implementation of beam search and diverse beam search algorit
 - Early stopping support
 - Memory-efficient implementation using shared memory
 - Optimized memory access patterns
+- Efficient thread utilization
 
 ### Diverse Beam Search
 - Group-based beam processing
@@ -22,6 +23,7 @@ A CUDA-accelerated implementation of beam search and diverse beam search algorit
 - Length penalty and temperature scaling
 - Early stopping support
 - Memory-efficient implementation
+- Parallel processing of beam groups
 
 ## Installation
 
@@ -135,6 +137,8 @@ The CUDA implementation provides significant speedup over CPU implementations, e
 - Grid-stride loop pattern for optimal parallel processing
 - Early stopping support to reduce unnecessary computation
 - Temperature scaling and length penalty implemented in CUDA
+- Efficient thread block configuration
+- Optimized shared memory allocation
 
 ## Requirements
 
@@ -142,6 +146,31 @@ The CUDA implementation provides significant speedup over CPU implementations, e
 - PyTorch 1.9.0+
 - CUDA 11.0+
 - NVIDIA GPU with compute capability 6.0+
+
+## Project Structure
+
+```
+cuda_beam_search/
+├── src/
+│   ├── beam_search.py           # Standard beam search implementation
+│   ├── cuda_beam_search.cu      # CUDA implementation for standard beam search
+│   ├── diverse/
+│   │   ├── beam_search.py       # Diverse beam search implementation
+│   │   ├── cuda_beam_search.cu  # CUDA implementation for diverse beam search
+│   │   └── __init__.py          # Diverse beam search module exports
+│   └── __init__.py              # Main module exports
+├── tests/
+│   ├── test_beam_search.py      # Tests for standard beam search
+│   └── diverse/
+│       └── test_beam_search.py  # Tests for diverse beam search
+├── docs/
+│   ├── implementation.md        # Implementation details
+│   └── diverse/
+│       └── implementation.md    # Diverse beam search implementation details
+└── examples/
+    ├── gpt2_generation.py       # Example usage with GPT-2
+    └── requirements.txt         # Example dependencies
+```
 
 ## Contributing
 
