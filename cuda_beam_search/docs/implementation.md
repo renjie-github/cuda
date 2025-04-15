@@ -16,7 +16,6 @@ The standard beam search implementation includes the following key features:
    - Grid-stride loop pattern for efficient parallel processing
    - Shared memory usage for faster data access
    - Memory coalescing for efficient memory access patterns
-   - Efficient thread block configuration
 
 2. **Scoring and Selection**:
    - Temperature scaling for logits
@@ -28,7 +27,6 @@ The standard beam search implementation includes the following key features:
    - Shared memory buffers for intermediate results
    - Memory coalescing hints for better memory access patterns
    - Efficient tensor operations
-   - Optimized shared memory allocation
 
 ### Diverse Beam Search
 
@@ -38,19 +36,16 @@ The diverse beam search extends the standard implementation with:
    - Division of beams into groups
    - Parallel processing of beam groups
    - Configurable diversity penalties
-   - Efficient group synchronization
 
 2. **Diversity Mechanisms**:
    - Inter-group diversity penalties
    - Temperature scaling per group
    - Length normalization with group awareness
-   - Group-specific scoring
 
 3. **Memory Optimizations**:
    - Shared memory for group scores
    - Efficient group-to-group communication
    - Memory-efficient diversity calculations
-   - Optimized shared memory layout
 
 ## CUDA Kernel Design
 
@@ -58,13 +53,13 @@ The diverse beam search extends the standard implementation with:
 
 ```cpp
 __global__ void process_beam_search_kernel(
-    const int64_t* input_ids,
-    const float* next_scores,
-    const int64_t* next_tokens,
-    const int64_t* next_indices,
-    float* next_beam_scores,
-    int64_t* next_beam_tokens,
-    int64_t* next_beam_indices,
+    __restrict__ const int64_t* input_ids,
+    __restrict__ const float* next_scores,
+    __restrict__ const int64_t* next_tokens,
+    __restrict__ const int64_t* next_indices,
+    __restrict__ float* next_beam_scores,
+    __restrict__ int64_t* next_beam_tokens,
+    __restrict__ int64_t* next_beam_indices,
     const int batch_size,
     const int num_beams,
     const int vocab_size,
@@ -81,19 +76,18 @@ Key features:
 - Length penalty application
 - Memory coalescing hints
 - Early stopping support
-- Efficient thread utilization
 
 ### Diverse Beam Search Kernel
 
 ```cpp
 __global__ void process_diverse_beam_search_kernel(
-    const int64_t* input_ids,
-    const float* next_scores,
-    const int64_t* next_tokens,
-    const int64_t* next_indices,
-    float* next_beam_scores,
-    int64_t* next_beam_tokens,
-    int64_t* next_beam_indices,
+    __restrict__ const int64_t* input_ids,
+    __restrict__ const float* next_scores,
+    __restrict__ const int64_t* next_tokens,
+    __restrict__ const int64_t* next_indices,
+    __restrict__ float* next_beam_scores,
+    __restrict__ int64_t* next_beam_tokens,
+    __restrict__ int64_t* next_beam_indices,
     const int batch_size,
     const int num_beams,
     const int num_beam_groups,
@@ -112,7 +106,6 @@ Key features:
 - Diversity penalty application
 - Temperature scaling per group
 - Length penalty with group awareness
-- Efficient group synchronization
 
 ## Performance Considerations
 
@@ -122,13 +115,11 @@ Key features:
    - Intermediate scores stored in shared memory
    - Group scores cached for diverse beam search
    - Memory-efficient data structures
-   - Optimized shared memory layout
 
 2. **Memory Access Patterns**:
    - Coalesced memory access
    - Efficient tensor operations
    - Minimized memory transfers
-   - Optimized memory layout
 
 ### Parallel Processing
 
@@ -136,13 +127,11 @@ Key features:
    - Optimal block size calculation
    - Grid-stride loop pattern
    - Efficient thread utilization
-   - Balanced workload distribution
 
 2. **Synchronization**:
    - Minimal synchronization points
    - Efficient thread communication
    - Group-level synchronization
-   - Optimized barrier usage
 
 ## Usage Examples
 
@@ -210,13 +199,11 @@ next_beam_scores, next_beam_tokens, next_beam_indices = scorer.process(
    - Use of shared memory
    - Memory coalescing hints
    - Efficient data structures
-   - Optimized memory layout
 
 2. **Parallel Processing**:
    - Grid-stride loop pattern
    - Optimal thread block size
    - Efficient synchronization
-   - Balanced workload
 
 3. **Algorithm Optimizations**:
    - Early stopping
@@ -230,16 +217,13 @@ next_beam_scores, next_beam_tokens, next_beam_indices = scorer.process(
    - Custom scoring functions
    - Advanced pruning strategies
    - Adaptive beam sizes
-   - Dynamic group allocation
 
 2. **Performance Optimizations**:
    - Asynchronous memory transfers
    - Stream-based processing
    - Dynamic parallelism
-   - Mixed precision computation
 
 3. **Feature Additions**:
    - Support for more models
    - Additional diversity metrics
-   - Advanced stopping criteria
-   - Custom scoring functions 
+   - Advanced stopping criteria 

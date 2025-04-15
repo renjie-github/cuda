@@ -13,13 +13,13 @@ constexpr int MAX_BLOCK_SIZE = 1024;
 constexpr int SHARED_MEM_SIZE = 32768; // 32KB shared memory
 
 __global__ void process_diverse_beam_search_kernel(
-    const int64_t* input_ids,
-    const float* next_scores,
-    const int64_t* next_tokens,
-    const int64_t* next_indices,
-    float* next_beam_scores,
-    int64_t* next_beam_tokens,
-    int64_t* next_beam_indices,
+    __restrict__ const int64_t* input_ids,
+    __restrict__ const float* next_scores,
+    __restrict__ const int64_t* next_tokens,
+    __restrict__ const int64_t* next_indices,
+    __restrict__ float* next_beam_scores,
+    __restrict__ int64_t* next_beam_tokens,
+    __restrict__ int64_t* next_beam_indices,
     const int batch_size,
     const int num_beams,
     const int num_beam_groups,
@@ -99,9 +99,7 @@ std::vector<torch::Tensor> process_diverse_beam_search_cuda(
     int num_beam_groups,
     float diversity_penalty,
     int pad_token_id,
-    int eos_token_id,
-    float length_penalty = 1.0f,
-    float temperature = 1.0f
+    int eos_token_id
 ) {
     CHECK_INPUT(input_ids);
     CHECK_INPUT(next_scores);
@@ -121,9 +119,8 @@ std::vector<torch::Tensor> process_diverse_beam_search_cuda(
     
     const dim3 blocks(batch_size, num_beam_groups);
     const dim3 threads(num_beams / num_beam_groups);
-    const size_t shared_mem_size = 2 * (num_beams / num_beam_groups) * vocab_size * sizeof(float);
     
-    process_diverse_beam_search_kernel<<<blocks, threads, shared_mem_size>>>(
+    process_diverse_beam_search_kernel<<<blocks, threads>>>(
         input_ids.data_ptr<int64_t>(),
         next_scores.data_ptr<float>(),
         next_tokens.data_ptr<int64_t>(),
