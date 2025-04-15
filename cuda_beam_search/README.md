@@ -1,44 +1,71 @@
-# CUDA Beam Search
+# CUDA Beam Search Implementation
 
-A CUDA-accelerated implementation of beam search and diverse beam search algorithms, optimized for large language models.
+This project implements CUDA-accelerated beam search algorithms, including both standard beam search and diverse beam search, based on the implementation from the Hugging Face Transformers library. The implementation is designed to be efficient and scalable for large language models.
 
-## Features
+## Project Structure
 
-### Standard Beam Search
-- High-performance CUDA implementation
-- Support for batch processing
-- Configurable number of beams
-- Length penalty for sequence normalization
-- Temperature scaling for logits
-- Early stopping support
-- Memory-efficient implementation using shared memory
-- Optimized memory access patterns
+```
+cuda_beam_search/
+├── src/
+│   ├── beam_search.py           # Standard beam search implementation
+│   ├── cuda_beam_search.cu      # CUDA implementation for standard beam search
+│   ├── diverse/
+│   │   ├── beam_search.py       # Diverse beam search implementation
+│   │   ├── cuda_beam_search.cu  # CUDA implementation for diverse beam search
+│   │   └── __init__.py          # Diverse beam search module exports
+│   └── __init__.py              # Main module exports
+├── tests/
+│   ├── test_beam_search.py      # Tests for standard beam search
+│   └── diverse/
+│       └── test_beam_search.py  # Tests for diverse beam search
+└── docs/
+    ├── implementation.md        # Implementation details for standard beam search
+    └── diverse/
+        └── implementation.md    # Implementation details for diverse beam search
+```
 
-### Diverse Beam Search
-- Group-based beam processing
-- Configurable diversity penalty
-- Support for multiple beam groups
-- Shared memory optimization
-- Length penalty and temperature scaling
-- Early stopping support
-- Memory-efficient implementation
+## Prerequisites
+
+- CUDA Toolkit (version 11.0 or higher)
+- Python 3.8 or higher
+- PyTorch with CUDA support
+- NVIDIA GPU with compute capability 6.0 or higher
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/cuda-beam-search.git
-cd cuda-beam-search
+git clone https://github.com/yourusername/cuda_beam_search.git
+cd cuda_beam_search
 ```
 
-2. Install dependencies:
+2. Create a virtual environment and activate it:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install the required packages:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Build the CUDA extensions:
+4. Build the CUDA extensions:
 ```bash
 python setup.py build_ext --inplace
+python setup_diverse.py build_ext --inplace
+```
+
+## Running the Tests
+
+To verify both implementations, run the test suites:
+
+```bash
+# Test standard beam search
+pytest tests/
+
+# Test diverse beam search
+pytest tests/diverse/
 ```
 
 ## Usage
@@ -47,101 +74,72 @@ python setup.py build_ext --inplace
 
 ```python
 from cuda_beam_search import CUDABeamSearchScorer
-import torch
 
-# Initialize the scorer
+# Initialize the beam search scorer
 scorer = CUDABeamSearchScorer(
-    batch_size=4,
-    num_beams=5,
+    batch_size=2,
+    num_beams=3,
     device=torch.device("cuda"),
-    length_penalty=1.0,  # Optional: length normalization
-    temperature=1.0,     # Optional: temperature scaling
-    early_stopping=True, # Optional: enable early stopping
-    max_steps=100        # Optional: maximum generation steps
+    length_penalty=1.0,
+    do_early_stopping=False,
+    num_beam_hyps_to_keep=1
 )
 
-# Process a step
+# Process one step of beam search
 next_beam_scores, next_beam_tokens, next_beam_indices = scorer.process(
-    input_ids,
-    next_scores,
-    next_tokens,
-    next_indices,
-    pad_token_id,
-    eos_token_id
-)
-
-# Finalize the search
-sequences, sequence_scores = scorer.finalize(
-    input_ids,
-    final_beam_scores,
-    final_beam_tokens,
-    final_beam_indices,
-    pad_token_id,
-    eos_token_id
+    input_ids=input_ids,
+    next_scores=next_scores,
+    next_tokens=next_tokens,
+    next_indices=next_indices,
+    pad_token_id=0,
+    eos_token_id=1
 )
 ```
 
 ### Diverse Beam Search
 
 ```python
-from cuda_beam_search import CUDADiverseBeamSearchScorer
-import torch
+from cuda_beam_search.diverse import CUDADiverseBeamSearchScorer
 
-# Initialize the scorer
+# Initialize the diverse beam search scorer
 scorer = CUDADiverseBeamSearchScorer(
-    batch_size=4,
-    num_beams=6,
-    num_beam_groups=3,
+    batch_size=2,
+    num_beams=6,  # Must be divisible by num_beam_groups
+    num_beam_groups=2,
     device=torch.device("cuda"),
-    diversity_penalty=0.5,  # Optional: diversity penalty
-    length_penalty=1.0,     # Optional: length normalization
-    temperature=1.0,        # Optional: temperature scaling
-    early_stopping=True,    # Optional: enable early stopping
-    max_steps=100           # Optional: maximum generation steps
+    length_penalty=1.0,
+    do_early_stopping=False,
+    num_beam_hyps_to_keep=1,
+    diversity_penalty=0.5  # Controls the strength of diversity
 )
 
-# Process a step
+# Process one step of diverse beam search
 next_beam_scores, next_beam_tokens, next_beam_indices = scorer.process(
-    input_ids,
-    next_scores,
-    next_tokens,
-    next_indices,
-    pad_token_id,
-    eos_token_id
-)
-
-# Finalize the search
-sequences, sequence_scores = scorer.finalize(
-    input_ids,
-    final_beam_scores,
-    final_beam_tokens,
-    final_beam_indices,
-    pad_token_id,
-    eos_token_id
+    input_ids=input_ids,
+    next_scores=next_scores,
+    next_tokens=next_tokens,
+    next_indices=next_indices,
+    pad_token_id=0,
+    eos_token_id=1
 )
 ```
 
-## Performance
+## Performance Comparison
 
-The CUDA implementation provides significant speedup over CPU implementations, especially for:
-- Large batch sizes
-- Large number of beams
-- Long sequences
-- Multiple beam groups (diverse beam search)
+Both CUDA implementations provide significant speedup compared to their CPU counterparts, especially for large batch sizes and number of beams. The exact performance improvement depends on your hardware configuration.
 
-### Performance Optimizations
-- Shared memory usage for faster data access
-- Memory coalescing for efficient memory access patterns
-- Grid-stride loop pattern for optimal parallel processing
-- Early stopping support to reduce unnecessary computation
-- Temperature scaling and length penalty implemented in CUDA
+### Key Features
 
-## Requirements
+1. **Standard Beam Search**:
+   - Efficient parallel processing of multiple beams
+   - Memory-optimized data structures
+   - Support for early stopping and length penalties
 
-- Python 3.7+
-- PyTorch 1.9.0+
-- CUDA 11.0+
-- NVIDIA GPU with compute capability 6.0+
+2. **Diverse Beam Search**:
+   - Group-based beam search with diversity penalties
+   - Parallel processing of beam groups
+   - Configurable diversity strength
+   - Efficient memory access patterns
 
 ## Contributing
 
