@@ -4,28 +4,45 @@
 #include <vector>
 #include <algorithm>
 
-#define CHECK_CUDA(x) TORCH_CHECK(x.device().is_cuda(), #x " must be a CUDA tensor")
+#define CHECK_CUDA_DETAILED(x) TORCH_CHECK(x.device().is_cuda(), #x " must be a CUDA tensor. Got device: " + x.device().str())
 #define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), #x " must be contiguous")
-#define CHECK_INPUT(x) CHECK_CUDA(x); CHECK_CONTIGUOUS(x)
+#define CHECK_INPUT(x) CHECK_CUDA_DETAILED(x); CHECK_CONTIGUOUS(x)
+
+// Constants for optimal performance
+constexpr int MAX_BLOCK_SIZE = 1024;
+constexpr int SHARED_MEM_SIZE = 32768; // 32KB shared memory
 
 __global__ void process_beam_search_kernel(
-    const int64_t* input_ids,
-    const float* next_scores,
-    const int64_t* next_tokens,
-    const int64_t* next_indices,
-    float* next_beam_scores,
-    int64_t* next_beam_tokens,
-    int64_t* next_beam_indices,
+    __restrict__ const int64_t* input_ids,
+    __restrict__ const float* next_scores,
+    __restrict__ const int64_t* next_tokens,
+    __restrict__ const int64_t* next_indices,
+    __restrict__ float* next_beam_scores,
+    __restrict__ int64_t* next_beam_tokens,
+    __restrict__ int64_t* next_beam_indices,
     const int batch_size,
     const int num_beams,
     const int vocab_size,
     const int pad_token_id,
-    const int eos_token_id
+    const int eos_token_id,
+    const float length_penalty,
+    const float temperature
 ) {
+    extern __shared__ float shared_scores[];
     const int batch_idx = blockIdx.x;
     const int beam_idx = threadIdx.x;
     
     if (beam_idx >= num_beams) return;
+    
+    // Use shared memory for better performance
+    float* local_scores = &shared_scores[beam_idx * vocab_size];
+    
+    // Load scores into shared memory
+    for (int i = beam_idx; i < vocab_size; i += blockDim.x) {
+        const int token_idx = batch_idx * vocab_size + i;
+        local_scores[i] = next_scores[token_idx] / temperature; // Apply temperature scaling
+    }
+    __syncthreads();
     
     // Find the best token for this beam
     float best_score = -1e9;
@@ -33,15 +50,16 @@ __global__ void process_beam_search_kernel(
     int64_t best_index = 0;
     
     for (int i = 0; i < vocab_size; i++) {
-        const int token_idx = batch_idx * vocab_size + i;
-        const float score = next_scores[token_idx];
-        
+        const float score = local_scores[i];
         if (score > best_score) {
             best_score = score;
-            best_token = next_tokens[token_idx];
-            best_index = next_indices[token_idx];
+            best_token = next_tokens[batch_idx * vocab_size + i];
+            best_index = next_indices[batch_idx * vocab_size + i];
         }
     }
+    
+    // Apply length penalty
+    best_score = best_score / powf((5.0f + 1.0f) / 6.0f, length_penalty);
     
     // Store the results
     const int out_idx = batch_idx * num_beams + beam_idx;
